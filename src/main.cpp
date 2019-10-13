@@ -58,7 +58,7 @@ wxFrame((wxFrame*)nullptr, wxID_ANY, title, pos, size) {
 #ifndef wxUSE_MENUS
 #error "Get that shit out of here."
 #endif
-    wxMenu *menuFile = new wxMenu
+    wxMenu *menuFile = new wxMenu;
     menuFile->Append(wxID_EXIT, "E&xit\tAlt-X", "Close this program.");
 
     wxMenu *menuHelp = new wxMenu;
