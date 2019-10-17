@@ -22,6 +22,18 @@ enum {
 
 const char* jsErrorString(int error);
 
+#define JS_TOTAL_MAP_STRINGS 76
+extern const char* jsMapStrings[JS_TOTAL_MAP_STRINGS];
+
+/*  Takes in a mapped button or axis index as reported by
+    the driver and provides the index into the above array.    */
+int jsMapActualIndexToString(int i);
+/*  Effectively does the opposite of the above function,
+    returning JS_INVALID_ARGUMENT if the input is out of range.
+    This error is reported for "NOT_SUPPORTED" as well, so you
+    have to account for it.                                     */
+int jsMapStringIndexToActual(int i);
+
 // A single device
 typedef struct {
     int fd;

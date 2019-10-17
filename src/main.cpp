@@ -10,6 +10,8 @@
     #include <wx/wx.h>
 #endif
 
+#include <wx/scrolwin.h>
+
 #include "joysticks.h"
 
 #ifndef wxOVERRIDE
@@ -41,10 +43,49 @@ public:
     void OnRefresh(wxCommandEvent& event);
     void OnQuit(wxCommandEvent& event);
     void OnAbout(wxCommandEvent& event);
+    void OnClose(wxCloseEvent& event);
 
     void EnableConfigControls(bool enable);
     void RefreshDevices();
     void UpdateJoystickInfo();
+};
+
+class ChoiceControl;
+
+class FrameConfig : public wxFrame {
+friend ChoiceControl;
+    wxDECLARE_EVENT_TABLE();
+    wxPanel *panel;
+    wxButton *buttonApply;
+    wxButton *buttonReset;
+    wxScrolledWindow *scrolledWindowMappings;
+    wxVector<wxChoice*> choiceAxisMappings;
+    wxVector<wxChoice*> choiceButtonMappings;
+    jsDevice joystick;
+    jsMapping mapping;
+public:
+    FrameConfig(wxFrame *parent, const jsDevice& device, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize);
+
+    void OnApply(wxCommandEvent& event);
+    void OnReset(wxCommandEvent& event);
+    void OnClose(wxCloseEvent& event);
+    void OnCloseButton(wxCommandEvent& event);
+
+    void SetChanged(bool changed);
+    void GetMapping();
+    void SetMapping();
+};
+
+class ChoiceControl : public wxChoice {
+    wxDECLARE_EVENT_TABLE();
+    FrameConfig *frameConfig;
+    bool axis; // if false, refers to a button
+    int index;
+public:
+    ChoiceControl(wxWindow *parent, int n, wxString *choices,
+        FrameConfig *frame, bool isAxis, int controlIndex);
+
+    void OnChanged(wxCommandEvent& event);
 };
 
 enum {
@@ -53,6 +94,9 @@ enum {
     idListDevices = 2,
     idButtonRefresh = 3,
     idButtonConfig = 4,
+    idButtonClose = 5,
+    idButtonApply = 6,
+    idButtonReset = 7,
 };
 
 wxBEGIN_EVENT_TABLE(FrameMain, wxFrame)
@@ -61,6 +105,18 @@ wxBEGIN_EVENT_TABLE(FrameMain, wxFrame)
     EVT_LISTBOX(idListDevices, FrameMain::OnDeviceSelect)
     EVT_BUTTON(idButtonRefresh, FrameMain::OnRefresh)
     EVT_BUTTON(idButtonConfig, FrameMain::OnConfig)
+    EVT_CLOSE(FrameMain::OnClose)
+wxEND_EVENT_TABLE()
+
+wxBEGIN_EVENT_TABLE(FrameConfig, wxFrame)
+    EVT_CLOSE(FrameConfig::OnClose)
+    EVT_BUTTON(idButtonClose, FrameConfig::OnCloseButton)
+    EVT_BUTTON(idButtonApply, FrameConfig::OnApply)
+    EVT_BUTTON(idButtonReset, FrameConfig::OnReset)
+wxEND_EVENT_TABLE()
+
+wxBEGIN_EVENT_TABLE(ChoiceControl, wxChoice)
+    EVT_CHOICE(wxID_ANY, ChoiceControl::OnChanged)
 wxEND_EVENT_TABLE()
 
 wxIMPLEMENT_APP(App);
@@ -145,10 +201,9 @@ void FrameMain::OnConfig(wxCommandEvent &event) {
     if (joystick == wxNOT_FOUND) {
         wxLogMessage("This shouldn't be possible!");
     }
-    jsMapping mapping;
-    int ret = jsMappingGet(&mapping, &joysticks[joystick]);
-    if (ret != JS_OK) wxLogMessage(jsErrorString(ret));
+    FrameConfig *frame = new FrameConfig(this, joysticks[joystick]);
 
+    frame->Show();
 }
 
 void FrameMain::OnDeviceSelect(wxCommandEvent &event) {
@@ -166,11 +221,26 @@ void FrameMain::OnQuit(wxCommandEvent &event) {
     for (int i = 0; i < numJoysticks; i++) {
         jsDeviceClean(&joysticks[i]);
     }
-    Close(true);
+    Close();
 }
 
 void FrameMain::OnAbout(wxCommandEvent &event) {
     wxMessageBox("This is a gamepad/joystick controller configuration tool for Linux!\nAuthor: Philip Haynes\nVersion: 0.0", "About", wxOK | wxICON_NONE, this);
+}
+
+void FrameMain::OnClose(wxCloseEvent &event) {
+    if (event.CanVeto()) {
+        wxWindowList &windows = GetChildren();
+        for (wxWindow* w : windows) {
+            if (!w->GetClassInfo()->IsKindOf(GetClassInfo()))
+                continue; // We only care about other wxFrames
+            if (!w->Close()) {
+                event.Veto();
+                return;
+            }
+        }
+    }
+    Destroy();
 }
 
 void FrameMain::EnableConfigControls(bool enable) {
@@ -204,5 +274,168 @@ void FrameMain::UpdateJoystickInfo() {
             wxString::Format("%s\nAxes: %i\nButtons: %i",
                 device.name, (int)device.numAxes, (int)device.numButtons)
         );
+    }
+}
+
+FrameConfig::FrameConfig(wxFrame *parent, const jsDevice &device, const wxPoint &position, const wxSize &size) :
+wxFrame(parent, wxID_ANY, wxString::Format("Configuring %s", device.name), position, size),
+joystick(device)
+{
+    SetIcon(wxICON(icon));
+
+    panel = new wxPanel(this, wxID_ANY);
+
+    wxSizer *sizerV = new wxBoxSizer(wxVERTICAL);
+
+    scrolledWindowMappings = new wxScrolledWindow(panel, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+
+    sizerV->Add(scrolledWindowMappings, wxSizerFlags(1).Expand().Border());
+
+    wxSizer *sizerButtons = new wxBoxSizer(wxHORIZONTAL);
+
+    wxButton *buttonClose = new wxButton(panel, idButtonClose, "Close");
+    buttonApply = new wxButton(panel, idButtonApply, "Apply");
+    buttonReset = new wxButton(panel, idButtonReset, "Reset");
+
+    sizerButtons->Add(buttonClose, wxSizerFlags(2).Expand().Border());
+    sizerButtons->Add(buttonReset, wxSizerFlags(2).Expand().Border());
+    sizerButtons->Add(buttonApply, wxSizerFlags(3).Expand().Border());
+
+    sizerV->Add(sizerButtons, wxSizerFlags(0).Expand().Border());
+
+    panel->SetSizer(sizerV);
+
+    SetMinClientSize(panel->GetBestSize());
+
+    GetMapping();
+}
+
+void FrameConfig::OnCloseButton(wxCommandEvent &event) {
+    Close();
+}
+
+void FrameConfig::OnClose(wxCloseEvent &event) {
+    if (event.CanVeto() && buttonApply->IsEnabled()) {
+        int ret = wxMessageBox("Do you want to apply your changes?", "Confirm",
+                               wxYES_NO | wxCANCEL | wxCANCEL_DEFAULT);
+        if (ret == wxYES) {
+            SetMapping();
+        } else if (ret == wxCANCEL) {
+            event.Veto();
+            return;
+        }
+    }
+
+    Destroy();
+}
+
+void FrameConfig::OnReset(wxCommandEvent &event) {
+    GetMapping();
+}
+
+void FrameConfig::OnApply(wxCommandEvent &event) {
+    SetMapping();
+}
+
+void FrameConfig::SetChanged(bool changed) {
+    buttonApply->Enable(changed);
+    buttonReset->Enable(changed);
+}
+
+void FrameConfig::GetMapping() {
+    SetChanged(false);
+    int ret = jsMappingGet(&mapping, &joystick);
+    if (ret != JS_OK) {
+        wxLogError(wxString::Format("Failed to get mapping: %s", jsErrorString(ret)));
+        Close(true);
+    }
+    wxWindow *windowMappings = scrolledWindowMappings->GetTargetWindow();
+    for (wxWindow* w : windowMappings->GetChildren()) {
+        w->Destroy();
+    }
+    choiceAxisMappings.clear();
+    choiceButtonMappings.clear();
+    wxSizer *sizerH1 = new wxBoxSizer(wxHORIZONTAL);
+    scrolledWindowMappings->SetSizer(sizerH1);
+
+    wxSizer *sizerAxisMaps = new wxBoxSizer(wxVERTICAL);
+    wxSizer *sizerButtonMaps = new wxBoxSizer(wxVERTICAL);
+
+    sizerH1->Add(sizerAxisMaps, wxSizerFlags().Expand().Border());
+    sizerH1->Add(sizerButtonMaps, wxSizerFlags().Expand().Border());
+
+    wxString axisChoices[25];
+    for (int i = 0; i < 24; i++) {
+        axisChoices[i] = jsMapStrings[i];
+    }
+    axisChoices[24] = jsMapStrings[JS_TOTAL_MAP_STRINGS-1];
+    for (int i = 0; i < joystick.numAxes; i++) {
+        wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
+        sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
+            wxString::Format("Axis %i", i)),
+            wxSizerFlags(1).Border().Expand());
+        wxChoice *choice = new ChoiceControl(windowMappings,
+            25, axisChoices, this, true, i);
+        int cur = jsMapActualIndexToString(mapping.axis[i]);
+        if (cur > 24) cur = 24;
+        choice->SetSelection(cur);
+        sizerH2->Add(choice, wxSizerFlags().Expand());
+        sizerAxisMaps->Add(sizerH2, wxSizerFlags().Expand());
+        choiceAxisMappings.push_back(choice);
+    }
+
+    wxString buttonChoices[52];
+    for (int i = 0; i < 51; i++) {
+        buttonChoices[i] = jsMapStrings[i+24];
+    }
+    buttonChoices[51] = jsMapStrings[JS_TOTAL_MAP_STRINGS-1];
+    for (int i = 0; i < joystick.numButtons; i++) {
+        wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
+        sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
+            wxString::Format("Button %i", i)),
+            wxSizerFlags(1).Border().Expand());
+        wxChoice *choice = new ChoiceControl(windowMappings,
+            52, buttonChoices, this, false, i);
+        int cur = jsMapActualIndexToString(mapping.button[i])-24;
+        if (cur > 51) cur = 51;
+        choice->SetSelection(cur);
+        sizerH2->Add(choice, wxSizerFlags().Expand());
+        sizerButtonMaps->Add(sizerH2, wxSizerFlags().Expand());
+        choiceButtonMappings.push_back(choice);
+    }
+    scrolledWindowMappings->SetScrollbars(0, choiceButtonMappings[0]->GetSize().y, 0, wxMax((int)joystick.numAxes, (int)joystick.numButtons), 0, 0);
+    sizerH1->SetSizeHints(panel);
+    SetMinClientSize(panel->GetBestSize());
+}
+
+void FrameConfig::SetMapping() {
+    int ret = jsMappingSet(&mapping, &joystick);
+    if (ret != JS_OK) {
+        wxLogError(wxString::Format("Failed to set mapping: %s", jsErrorString(ret)));
+        Close(true);
+    }
+    SetChanged(false);
+}
+
+ChoiceControl::ChoiceControl(wxWindow *parent, int n, wxString *choices,
+    FrameConfig *frame, bool isAxis, int controlIndex) :
+wxChoice(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, n, choices),
+frameConfig(frame), axis(isAxis), index(controlIndex) {
+
+}
+
+void ChoiceControl::OnChanged(wxCommandEvent &event) {
+    frameConfig->SetChanged(true);
+    int newVal = jsMapStringIndexToActual(event.GetInt() + (axis ? 0 : 24));
+    printf("event.GetInt() = %i, newVal = %i\n", event.GetInt(), newVal);
+    if (newVal == JS_INVALID_ARGUMENT) {
+        wxLogError("Invalid choice!");
+    } else {
+        if (axis) {
+            frameConfig->mapping.axis[index] = newVal;
+        } else {
+            frameConfig->mapping.button[index] = newVal;
+        }
     }
 }
