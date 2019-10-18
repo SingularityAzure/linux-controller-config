@@ -2,7 +2,7 @@ SRCDIR = src
 BINDIR = bin
 OBJDIR = obj
 
-APP = Controller_Config
+APP = controller-config
 _DEPS = joysticks.h
 DEPS = $(patsubst %,$(SRCDIR)/%,$(_DEPS)) makefile
 _OBJS = main.o
@@ -29,7 +29,7 @@ $(OBJDIR)/Debug/c/%.o: $(SRCDIR)/%.c $(DEPS)
 	@mkdir -p $(@D)
 	gcc -c -o $@ $< -g -rdynamic
 
-.PHONY: build builddebug run rundebug test testdebug
+.PHONY: build builddebug run rundebug test testdebug clean install uninstall
 
 build: $(OBJS) $(OBJS_C)
 	@mkdir -p $(BINDIR)
@@ -50,3 +50,14 @@ test: build
 
 testdebug: builddebug
 	$(BINDIR)/$(APP)_Debug
+
+clean:
+	rm -f -R bin obj
+
+install:
+	cp $(BINDIR)/$(APP) /usr/bin/$(APP)
+	cp controller-config.desktop /usr/share/applications/controller-config.desktop
+
+uninstall:
+	rm /usr/bin/$(APP)
+	rm /usr/share/applications/controller-config.desktop

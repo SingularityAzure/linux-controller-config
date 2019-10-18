@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Controller Config
+Comment=Controller input remapping tool
+Exec=controller-config
+Terminal=false
+Type=Application
+Icon=input-gaming-symbolic
+Categories=System;
+Keywords=gamepad;joystick;wheel;
