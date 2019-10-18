@@ -10,6 +10,9 @@
     #include <wx/wx.h>
 #endif
 
+#define VERSION_MAJOR 0
+#define VERSION_MINOR 1
+
 #include <wx/scrolwin.h>
 #include <wx/mstream.h>
 #include <wx/imagtga.h>
@@ -264,7 +267,10 @@ void FrameMain::OnQuit(wxCommandEvent &event) {
 }
 
 void FrameMain::OnAbout(wxCommandEvent &event) {
-    wxMessageBox("This is a gamepad/joystick controller configuration tool for Linux!\nAuthor: Philip Haynes\nVersion: 0.0", "About", wxOK | wxICON_NONE, this);
+    wxMessageBox(wxString::Format(
+        "This is a gamepad/joystick controller configuration tool for Linux!\n"
+        "Author: Philip Haynes\nVersion: %i.%i", VERSION_MAJOR, VERSION_MINOR),
+        "About", wxOK | wxICON_NONE, this);
 }
 
 void FrameMain::OnClose(wxCloseEvent &event) {
