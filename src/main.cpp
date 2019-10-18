@@ -11,6 +11,8 @@
 #endif
 
 #include <wx/scrolwin.h>
+#include <wx/mstream.h>
+#include <wx/imagtga.h>
 
 #include "joysticks.h"
 
@@ -19,6 +21,17 @@
 #endif
 
 #include "icon.xpm"
+
+// These are png files inside of const char arrays.
+#include "circle_0.c"
+#include "circle_1.c"
+#include "circle_2.c"
+#include "circle_3.c"
+#include "circle_4.c"
+#include "circle_5.c"
+#include "circle_6.c"
+#include "circle_7.c"
+#include "circle_8.c"
 
 class App : public wxApp {
 public:
@@ -33,6 +46,7 @@ class FrameMain : public wxFrame {
     wxListBox *listDevices;
     wxButton *buttonConfig;
     wxStaticText *textJoystickInfo;
+    wxImage imageControls[9]; // 0 to 8 eigths filled
     int numJoysticks = 0;
     jsDevice joysticks[32];
 public:
@@ -58,18 +72,24 @@ friend ChoiceControl;
     wxPanel *panel;
     wxButton *buttonApply;
     wxButton *buttonReset;
+    wxBitmap bitmapControls[9];
     wxScrolledWindow *scrolledWindowMappings;
-    wxVector<wxChoice*> choiceAxisMappings;
-    wxVector<wxChoice*> choiceButtonMappings;
+    wxVector<wxStaticBitmap*> axisStatusImages;
+    wxVector<wxStaticBitmap*> buttonStatusImages;
+    wxTimer timer;
     jsDevice joystick;
     jsMapping mapping;
 public:
-    FrameConfig(wxFrame *parent, const jsDevice& device, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize);
+    FrameConfig(wxFrame *parent, const jsDevice& device,
+        const wxImage imageControls[9],
+        const wxPoint& pos = wxDefaultPosition,
+        const wxSize& size = wxDefaultSize);
 
     void OnApply(wxCommandEvent& event);
     void OnReset(wxCommandEvent& event);
     void OnClose(wxCloseEvent& event);
     void OnCloseButton(wxCommandEvent& event);
+    void OnTimer(wxTimerEvent& event);
 
     void SetChanged(bool changed);
     void GetMapping();
@@ -97,6 +117,7 @@ enum {
     idButtonClose = 5,
     idButtonApply = 6,
     idButtonReset = 7,
+    idTimerUpdateController = 8,
 };
 
 wxBEGIN_EVENT_TABLE(FrameMain, wxFrame)
@@ -113,6 +134,7 @@ wxBEGIN_EVENT_TABLE(FrameConfig, wxFrame)
     EVT_BUTTON(idButtonClose, FrameConfig::OnCloseButton)
     EVT_BUTTON(idButtonApply, FrameConfig::OnApply)
     EVT_BUTTON(idButtonReset, FrameConfig::OnReset)
+    EVT_TIMER(idTimerUpdateController, FrameConfig::OnTimer)
 wxEND_EVENT_TABLE()
 
 wxBEGIN_EVENT_TABLE(ChoiceControl, wxChoice)
@@ -194,6 +216,23 @@ wxFrame((wxFrame*)nullptr, wxID_ANY, title, pos, size) {
     SetMinSize(minSize);
 
     RefreshDevices();
+
+    wxMemoryInputStream mstreamCircles[9] = {
+        {circle_0, circle_0_length},
+        {circle_1, circle_1_length},
+        {circle_2, circle_2_length},
+        {circle_3, circle_3_length},
+        {circle_4, circle_4_length},
+        {circle_5, circle_5_length},
+        {circle_6, circle_6_length},
+        {circle_7, circle_7_length},
+        {circle_8, circle_8_length},
+    };
+
+    for (int i = 0; i < 9; i++) {
+        imageControls[i].AddHandler(new wxPNGHandler);
+        imageControls[i].LoadFile(mstreamCircles[i], wxBITMAP_TYPE_PNG);
+    }
 }
 
 void FrameMain::OnConfig(wxCommandEvent &event) {
@@ -201,7 +240,7 @@ void FrameMain::OnConfig(wxCommandEvent &event) {
     if (joystick == wxNOT_FOUND) {
         wxLogMessage("This shouldn't be possible!");
     }
-    FrameConfig *frame = new FrameConfig(this, joysticks[joystick]);
+    FrameConfig *frame = new FrameConfig(this, joysticks[joystick], imageControls);
 
     frame->Show();
 }
@@ -277,8 +316,19 @@ void FrameMain::UpdateJoystickInfo() {
     }
 }
 
-FrameConfig::FrameConfig(wxFrame *parent, const jsDevice &device, const wxPoint &position, const wxSize &size) :
+FrameConfig::FrameConfig(wxFrame *parent, const jsDevice &device,
+    const wxImage imageControls[9], const wxPoint &position, const wxSize &size) :
 wxFrame(parent, wxID_ANY, wxString::Format("Configuring %s", device.name), position, size),
+bitmapControls{imageControls[0],
+               imageControls[1],
+               imageControls[2],
+               imageControls[3],
+               imageControls[4],
+               imageControls[5],
+               imageControls[6],
+               imageControls[7],
+               imageControls[8]},
+timer(this, idTimerUpdateController),
 joystick(device)
 {
     SetIcon(wxICON(icon));
@@ -309,6 +359,8 @@ joystick(device)
     SetMinClientSize(panel->GetBestSize());
 
     GetMapping();
+
+    timer.Start(20);
 }
 
 void FrameConfig::OnCloseButton(wxCommandEvent &event) {
@@ -338,6 +390,25 @@ void FrameConfig::OnApply(wxCommandEvent &event) {
     SetMapping();
 }
 
+void FrameConfig::OnTimer(wxTimerEvent &event) {
+    js_event ev;
+    int ret;
+    while ((ret = jsEventGet(&ev, &joystick))) {
+        if (ret == JS_DEVICE_LOST) {
+            wxLogError("Device unplugged!");
+            Close(true);
+            return;
+        }
+        if (ev.type == JS_EVENT_BUTTON) {
+            buttonStatusImages[ev.number]->SetBitmap(bitmapControls[(ev.value == 1) ? 8 : 0]);
+        } else if (ev.type == JS_EVENT_AXIS) {
+            int image = (ev.value + 32768) / 7282;
+            axisStatusImages[ev.number]->SetBitmap(bitmapControls[image]);
+        }
+    }
+    // Update();
+}
+
 void FrameConfig::SetChanged(bool changed) {
     buttonApply->Enable(changed);
     buttonReset->Enable(changed);
@@ -354,8 +425,8 @@ void FrameConfig::GetMapping() {
     for (wxWindow* w : windowMappings->GetChildren()) {
         w->Destroy();
     }
-    choiceAxisMappings.clear();
-    choiceButtonMappings.clear();
+    axisStatusImages.clear();
+    buttonStatusImages.clear();
     wxSizer *sizerH1 = new wxBoxSizer(wxHORIZONTAL);
     scrolledWindowMappings->SetSizer(sizerH1);
 
@@ -370,11 +441,19 @@ void FrameConfig::GetMapping() {
         axisChoices[i] = jsMapStrings[i];
     }
     axisChoices[24] = jsMapStrings[JS_TOTAL_MAP_STRINGS-1];
+    wxChoice *oneChoice = nullptr;
     for (int i = 0; i < joystick.numAxes; i++) {
         wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
         sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
             wxString::Format("Axis %i", i)),
-            wxSizerFlags(1).Border().Expand());
+            wxSizerFlags(1).Center());
+
+        wxStaticBitmap *statusImage =
+            new wxStaticBitmap(windowMappings, wxID_ANY, bitmapControls[4]);
+
+        sizerH2->Add(statusImage, wxSizerFlags().Center().Border());
+        axisStatusImages.push_back(statusImage);
+
         wxChoice *choice = new ChoiceControl(windowMappings,
             25, axisChoices, this, true, i);
         int cur = jsMapActualIndexToString(mapping.axis[i]);
@@ -382,7 +461,7 @@ void FrameConfig::GetMapping() {
         choice->SetSelection(cur);
         sizerH2->Add(choice, wxSizerFlags().Expand());
         sizerAxisMaps->Add(sizerH2, wxSizerFlags().Expand());
-        choiceAxisMappings.push_back(choice);
+        oneChoice = choice;
     }
 
     wxString buttonChoices[52];
@@ -394,7 +473,14 @@ void FrameConfig::GetMapping() {
         wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
         sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
             wxString::Format("Button %i", i)),
-            wxSizerFlags(1).Border().Expand());
+            wxSizerFlags(1).Center());
+
+        wxStaticBitmap *statusImage =
+            new wxStaticBitmap(windowMappings, wxID_ANY, bitmapControls[0]);
+
+        sizerH2->Add(statusImage, wxSizerFlags().Center().Border());
+        buttonStatusImages.push_back(statusImage);
+
         wxChoice *choice = new ChoiceControl(windowMappings,
             52, buttonChoices, this, false, i);
         int cur = jsMapActualIndexToString(mapping.button[i])-24;
@@ -402,9 +488,11 @@ void FrameConfig::GetMapping() {
         choice->SetSelection(cur);
         sizerH2->Add(choice, wxSizerFlags().Expand());
         sizerButtonMaps->Add(sizerH2, wxSizerFlags().Expand());
-        choiceButtonMappings.push_back(choice);
+        oneChoice = choice;
     }
-    scrolledWindowMappings->SetScrollbars(0, choiceButtonMappings[0]->GetSize().y, 0, wxMax((int)joystick.numAxes, (int)joystick.numButtons), 0, 0);
+    int heightOfChoice = oneChoice != nullptr ? oneChoice->GetSize().y : 32;
+    scrolledWindowMappings->SetScrollbars(0, heightOfChoice,
+        0, wxMax((int)joystick.numAxes, (int)joystick.numButtons), 0, 0);
     sizerH1->SetSizeHints(panel);
     SetMinClientSize(panel->GetBestSize());
 }
@@ -428,7 +516,6 @@ frameConfig(frame), axis(isAxis), index(controlIndex) {
 void ChoiceControl::OnChanged(wxCommandEvent &event) {
     frameConfig->SetChanged(true);
     int newVal = jsMapStringIndexToActual(event.GetInt() + (axis ? 0 : 24));
-    printf("event.GetInt() = %i, newVal = %i\n", event.GetInt(), newVal);
     if (newVal == JS_INVALID_ARGUMENT) {
         wxLogError("Invalid choice!");
     } else {

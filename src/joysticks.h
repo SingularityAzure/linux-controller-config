@@ -18,6 +18,7 @@ enum {
     JS_DEVICE_NOT_FOUND = -1,
     JS_INVALID_ARGUMENT = -2,
     JS_UNKNOWN_ERROR    = -3,
+    JS_DEVICE_LOST      = -4,
 };
 
 const char* jsErrorString(int error);
@@ -53,6 +54,8 @@ typedef struct {
 
 int jsMappingGet(jsMapping *dst, jsDevice *device);
 int jsMappingSet(jsMapping *src, jsDevice *device);
+
+int jsEventGet(struct js_event *dst, jsDevice *device);
 
 #ifdef __cplusplus
 }

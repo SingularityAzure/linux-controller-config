@@ -6,6 +6,7 @@
 #include "joysticks.h"
 
 #include <stdio.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -14,10 +15,11 @@ const char* jsErrorStrings[] = {
     "JS_DEVICE_NOT_FOUND",
     "JS_INVALID_ARGUMENT",
     "JS_UNKNOWN_ERROR",
+    "JS_DEVICE_LOST"
 };
 
 const char* jsErrorString(int error) {
-    if (error < -3 || error > 0) {
+    if (error < -4 || error > 0) {
         return "Invalid error code";
     }
     return jsErrorStrings[-error];
@@ -171,8 +173,6 @@ int jsDeviceInit(jsDevice *device, char pathNum) {
         device->fd = -1;
         return JS_UNKNOWN_ERROR;
     }
-    printf("Opened %s, named %s with %i axes and %i buttons\n",
-        path, device->name, (int)device->numAxes, (int)device->numButtons);
     return JS_OK;
 }
 
@@ -203,4 +203,14 @@ int jsMappingSet(jsMapping *src, jsDevice *device) {
         return JS_UNKNOWN_ERROR;
     }
     return JS_OK;
+}
+
+int jsEventGet(struct js_event *dst, jsDevice *device) {
+    ssize_t rc = read(device->fd, dst, sizeof(struct js_event));
+    if (rc == -1 && errno != EAGAIN) {
+        close(device->fd);
+        device->fd = -1;
+        return JS_DEVICE_LOST;
+    }
+    return rc == sizeof(struct js_event);
 }
