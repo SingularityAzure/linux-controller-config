@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=Controller Config
 Comment=Controller input remapping tool
-Exec=controller-config
+Exec=/usr/bin/controller-config
 Terminal=false
 Type=Application
-Icon=input-gaming-symbolic
+Icon=/usr/share/controller-config/Icon.svg
 Categories=System;
 Keywords=gamepad;joystick;wheel;

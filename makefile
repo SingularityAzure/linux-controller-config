@@ -57,7 +57,10 @@ clean:
 install:
 	cp $(BINDIR)/$(APP) /usr/bin/$(APP)
 	cp controller-config.desktop /usr/share/applications/controller-config.desktop
+	mkdir -p /usr/share/controller-config
+	cp images/Icon.svg /usr/share/controller-config/Icon.svg
 
 uninstall:
 	rm /usr/bin/$(APP)
 	rm /usr/share/applications/controller-config.desktop
+	rm -r /usr/share/controller-config

@@ -23,9 +23,8 @@
     #define wxOVERRIDE override
 #endif
 
-#include "icon.xpm"
-
 // These are png files inside of const char arrays.
+#include "icon.c"
 #include "circle_0.c"
 #include "circle_1.c"
 #include "circle_2.c"
@@ -52,6 +51,7 @@ class FrameMain : public wxFrame {
     wxImage imageControls[9]; // 0 to 8 eigths filled
     int numJoysticks = 0;
     jsDevice joysticks[32];
+    wxIcon icon;
 public:
     FrameMain(const wxString& title, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize);
 
@@ -160,7 +160,12 @@ bool App::OnInit() {
 
 FrameMain::FrameMain(const wxString& title, const wxPoint& pos, const wxSize& size) :
 wxFrame((wxFrame*)nullptr, wxID_ANY, title, pos, size) {
-    SetIcon(wxICON(icon));
+    wxImage imageIcon;
+    wxMemoryInputStream inputStreamIcon(::icon, icon_length);
+    imageIcon.AddHandler(new wxPNGHandler);
+    imageIcon.LoadFile(inputStreamIcon, wxBITMAP_TYPE_PNG);
+    icon.CopyFromBitmap(wxBitmap(imageIcon));
+    SetIcon(icon);
 
 #ifndef wxUSE_MENUS
 #error "Get that shit out of here."
@@ -244,7 +249,7 @@ void FrameMain::OnConfig(wxCommandEvent &event) {
         wxLogMessage("This shouldn't be possible!");
     }
     FrameConfig *frame = new FrameConfig(this, joysticks[joystick], imageControls);
-
+    frame->SetIcon(icon);
     frame->Show();
 }
 
@@ -337,8 +342,6 @@ bitmapControls{imageControls[0],
 timer(this, idTimerUpdateController),
 joystick(device)
 {
-    SetIcon(wxICON(icon));
-
     panel = new wxPanel(this, wxID_ANY);
 
     wxSizer *sizerV = new wxBoxSizer(wxVERTICAL);
