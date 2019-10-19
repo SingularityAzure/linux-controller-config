@@ -220,7 +220,7 @@ int jsEventGet(struct js_event *dst, jsDevice *device) {
 void jsNameHash(char dst[8], const char *name) {
     unsigned hash = 0;
     for (int i = 0; name[i] != 0; i++) {
-        hash ^= ((int)name[i]) << (8 * (i % 4));
+        hash = hash * 31 + name[i];
     }
     for (int i = 0; i < 8; i++) {
         char c = hash % 16;
