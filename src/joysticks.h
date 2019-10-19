@@ -57,6 +57,9 @@ int jsMappingSet(jsMapping *src, jsDevice *device);
 
 int jsEventGet(struct js_event *dst, jsDevice *device);
 
+int jsMappingSave(jsMapping *src, jsDevice *device);
+int jsMappingLoad(jsMapping *dst, jsDevice *device);
+
 #ifdef __cplusplus
 }
 #endif

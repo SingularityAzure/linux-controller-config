@@ -309,6 +309,11 @@ void FrameMain::RefreshDevices() {
         if (jsDeviceInit(&joysticks[numJoysticks], i) != JS_OK) {
             continue;
         }
+        jsMapping mapping;
+        int ret = jsMappingLoad(&mapping, &joysticks[numJoysticks]);
+        if (ret == JS_OK) {
+            jsMappingSet(&mapping, &joysticks[numJoysticks]);
+        }
         listDevices->Append(wxString::Format("/dev/input/js%i\t%s", i, joysticks[numJoysticks].name));
         numJoysticks++;
     }
@@ -430,6 +435,10 @@ void FrameConfig::GetMapping() {
         wxLogError(wxString::Format("Failed to get mapping: %s", jsErrorString(ret)));
         Close(true);
     }
+    ret = jsMappingLoad(&mapping, &joystick);
+    if (ret == JS_OK) {
+        jsMappingSet(&mapping, &joystick);
+    }
     wxWindow *windowMappings = scrolledWindowMappings->GetTargetWindow();
     for (wxWindow* w : windowMappings->GetChildren()) {
         w->Destroy();
@@ -507,7 +516,12 @@ void FrameConfig::GetMapping() {
 }
 
 void FrameConfig::SetMapping() {
-    int ret = jsMappingSet(&mapping, &joystick);
+    int ret;
+    ret = jsMappingSave(&mapping, &joystick);
+    if (ret != JS_OK) {
+        wxLogError(wxString::Format("Failed to save mapping: %s", jsErrorString(ret)));
+    }
+    ret = jsMappingSet(&mapping, &joystick);
     if (ret != JS_OK) {
         wxLogError(wxString::Format("Failed to set mapping: %s", jsErrorString(ret)));
         Close(true);

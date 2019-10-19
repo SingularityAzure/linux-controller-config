@@ -6,6 +6,8 @@
 #include "joysticks.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -213,4 +215,120 @@ int jsEventGet(struct js_event *dst, jsDevice *device) {
         return JS_DEVICE_LOST;
     }
     return rc == sizeof(struct js_event);
+}
+
+void jsNameHash(char dst[8], const char *name) {
+    unsigned hash = 0;
+    for (int i = 0; name[i] != 0; i++) {
+        hash ^= ((int)name[i]) << (8 * (i % 4));
+    }
+    for (int i = 0; i < 8; i++) {
+        char c = hash % 16;
+        dst[7-i] = c < 10 ? c+'0' : c+'a'-10;
+        hash /= 16;
+    }
+}
+
+// No padding bytes
+#pragma pack(1)
+
+typedef struct {
+    unsigned short nameSize;
+    char numAxes, numButtons;
+    // char name[nameSize];
+    // __u8 axis[numAxes];
+    // __u16 button[numButtons];
+} jsMappingFileHeader;
+
+#pragma pack()
+
+char *jsMappingFilename(const char *name) {
+    char filename[] = "/.config/controller-config/mappingXXXXXXXX";
+    jsNameHash(filename+34, name);
+    char *homeDir = getenv("HOME");
+    if (!homeDir) {
+        return NULL;
+    }
+    int homeDirLen = strlen(homeDir);
+    int filenameLen = strlen(filename);
+    char *fullPath = (char*)malloc(homeDirLen+filenameLen+1);
+    strcpy(fullPath, homeDir);
+    strcpy(fullPath+homeDirLen, filename);
+    return fullPath;
+}
+
+int jsMappingSave(jsMapping *src, jsDevice *device) {
+    if (-1 == system("mkdir -p ~/.config/controller-config")) {
+        return JS_UNKNOWN_ERROR;
+    }
+    char *fullPath = jsMappingFilename(device->name);
+    if (!fullPath) {
+        return JS_UNKNOWN_ERROR;
+    }
+    FILE *file = fopen(fullPath, "wb");
+    free(fullPath);
+    if (!file) {
+        return JS_UNKNOWN_ERROR;
+    }
+    jsMappingFileHeader header;
+    header.nameSize = strlen(device->name);
+    header.numAxes = device->numAxes;
+    header.numButtons = device->numButtons;
+    fwrite(&header, 1, sizeof(header), file);
+    fwrite(device->name, 1, header.nameSize, file);
+    fwrite(src->axis, 1, header.numAxes, file);
+    fwrite(src->button, 1, header.numButtons*2, file);
+    fclose(file);
+    return JS_OK;
+}
+
+int jsMappingLoad(jsMapping *dst, jsDevice *device) {
+    char *fullPath = jsMappingFilename(device->name);
+    if (!fullPath) {
+        return JS_UNKNOWN_ERROR;
+    }
+    FILE *file = fopen(fullPath, "rb");
+    free(fullPath);
+    if (!file) {
+        return JS_UNKNOWN_ERROR;
+    }
+    jsMappingFileHeader header;
+    if (fread(&header, 1, sizeof(header), file) != sizeof(header)) {
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    if (header.numAxes != device->numAxes) {
+        printf("Wrong number of axes in the file (%i)!\n", (int)header.numAxes);
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    if (header.numButtons != device->numButtons) {
+        printf("Wrong number of buttons in the file!\n");
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    char *name = (char*)malloc(header.nameSize+1);
+    name[header.nameSize] = 0;
+    if (fread(name, 1, header.nameSize, file) != header.nameSize) {
+        free(name);
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    if (strcmp(name, device->name) != 0) {
+        printf("Wrong device name in the file!\n");
+        free(name);
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    free(name);
+    if (fread(dst->axis, 1, header.numAxes, file) != (size_t)header.numAxes) {
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    if (fread(dst->button, 1, header.numButtons*2, file) != (size_t)header.numButtons*2) {
+        fclose(file);
+        return JS_UNKNOWN_ERROR;
+    }
+    fclose(file);
+    return JS_OK;
 }
