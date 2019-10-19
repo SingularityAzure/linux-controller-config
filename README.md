@@ -3,10 +3,15 @@ A GUI tool for remapping controller inputs on Linux for those pesky times your c
 
 Using wxWidgets and the linux/joystick API, this provides a nice-to-use interface for remapping controls.
 
+# Current Features
+- Remapping axes and buttons.
+- Saving of the mappings in files under `~/.config/controller-config/`
+- Automatically loading and applying saved mappings upon program start and device refreshing.
+
 # Planned Features
 These aren't here yet but they're next on the list.
-- Saving/loading maps in a file (preferably automatically).
 - Axis calibration.
+- Daemonization of saving/loading axis maps.
 
 
 # Installation
