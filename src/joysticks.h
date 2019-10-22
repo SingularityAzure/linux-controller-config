@@ -23,58 +23,6 @@ enum {
 
 const char* jsErrorString(int error);
 
-#define JS_ALL_AXES_COUNT 24
-#define JS_ALL_BTNS_COUNT 52
-extern const char* jsAllAxes[JS_ALL_AXES_COUNT];
-extern const char* jsAllBtns[JS_ALL_BTNS_COUNT];
-
-typedef int (*fpJsMapFunc)(int);
-
-/*  Takes in a mapped axis index as reported by
-the driver and provides the index into the above array.    */
-int jsAxisMapActualIndexToAll(int i);
-/*  Effectively does the opposite of the above function,
-returning JS_INVALID_ARGUMENT if the input is out of range.
-This error is reported for "NOT_SUPPORTED" as well, so you
-have to account for it.                                     */
-int jsAxisMapAllIndexToActual(int i);
-
-int jsButtonMapActualIndexToAll(int i);
-int jsButtonMapAllIndexToActual(int i);
-
-// NOTE: Someone will have to verify these
-//       since I don't have a joystick to test with.
-#define JS_JOYSTICK_AXES_COUNT 7
-#define JS_JOYSTICK_BTNS_COUNT 14
-extern const char* jsJoystickAxes[JS_JOYSTICK_AXES_COUNT];
-extern const char* jsJoystickBtns[JS_JOYSTICK_BTNS_COUNT];
-
-int jsAxisMapActualIndexToJoystick(int i);
-int jsAxisMapJoystickIndexToActual(int i);
-int jsButtonMapActualIndexToJoystick(int i);
-int jsButtonMapJoystickIndexToActual(int i);
-
-#define JS_GAMEPAD_AXES_COUNT 9
-#define JS_GAMEPAD_BTNS_COUNT 16
-extern const char* jsGamepadAxes[JS_GAMEPAD_AXES_COUNT];
-extern const char* jsGamepadBtns[JS_GAMEPAD_BTNS_COUNT];
-
-int jsAxisMapActualIndexToGamepad(int i);
-int jsAxisMapGamepadIndexToActual(int i);
-int jsButtonMapActualIndexToGamepad(int i);
-int jsButtonMapGamepadIndexToActual(int i);
-
-// NOTE: Someone will have to verify these as well.
-#define JS_WHEEL_AXES_COUNT 6
-#define JS_WHEEL_BTNS_COUNT 16
-extern const char* jsWheelAxes[JS_WHEEL_AXES_COUNT];
-extern const char* jsWheelBtns[JS_WHEEL_BTNS_COUNT];
-
-int jsAxisMapActualIndexToWheel(int i);
-int jsAxisMapWheelIndexToActual(int i);
-int jsButtonMapActualIndexToWheel(int i);
-int jsButtonMapWheelIndexToActual(int i);
-
 // A single device
 typedef struct {
     int fd;

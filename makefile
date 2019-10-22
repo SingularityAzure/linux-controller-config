@@ -3,13 +3,13 @@ BINDIR = bin
 OBJDIR = obj
 
 APP = controller-config
-_DEPS = joysticks.h
+_DEPS = joysticks.h joystick_maps.h
 DEPS = $(patsubst %,$(SRCDIR)/%,$(_DEPS)) makefile
 _OBJS = main.o
 OBJS = $(patsubst %,$(OBJDIR)/Release/%,$(_OBJS))
 OBJS_D = $(patsubst %,$(OBJDIR)/Debug/%,$(_OBJS))
 
-_OBJS_C = joysticks.o
+_OBJS_C = joysticks.o joystick_maps.o
 OBJS_C = $(patsubst %,$(OBJDIR)/Release/c/%,$(_OBJS_C))
 OBJS_C_D = $(patsubst %,$(OBJDIR)/Debug/c/%,$(_OBJS_C))
 

@@ -18,6 +18,7 @@
 #include <wx/imagtga.h>
 
 #include "joysticks.h"
+#include "joystick_maps.h"
 
 #ifndef wxOVERRIDE
     #define wxOVERRIDE override
@@ -360,7 +361,7 @@ void FrameMain::RefreshDevices() {
         if (ret == JS_OK) {
             jsMappingSet(&mapping, &joysticks[numJoysticks]);
         }
-        listDevices->Append(wxString::Format("/dev/input/js%i\t%s", i, joysticks[numJoysticks].name));
+        listDevices->Append(joysticks[numJoysticks].name);
         numJoysticks++;
     }
 }
@@ -403,7 +404,7 @@ joystick(device)
     }
     choiceType = new ChoiceType(panel, JS_TYPE_COUNT, jsTypes, this);
 
-    sizerV->Add(choiceType, wxSizerFlags().Border().Center());
+    sizerV->Add(choiceType, wxSizerFlags().Border(wxALL & (~wxBOTTOM), 10).Center());
 
     scrolledWindowMappings = new wxScrolledWindow(panel, wxID_ANY,
         wxDefaultPosition, wxDefaultSize, wxVSCROLL);
@@ -516,29 +517,29 @@ void FrameConfig::SetMapping() {
 void FrameConfig::InferTypeFromMapping() {
     int nJoystick = 0, nGamepad = 0, nWheel = 0;
     for (int i = 0; i < joystick.numAxes; i++) {
-        if (jsAxisMapActualIndexToJoystick(mapping.axis[i])
+        if (jsAxisMapToJoystick(mapping.axis[i])
                 != JS_JOYSTICK_AXES_COUNT - 1) {
             nJoystick++;
         }
-        if (jsAxisMapActualIndexToGamepad(mapping.axis[i])
+        if (jsAxisMapToGamepad(mapping.axis[i])
                 != JS_GAMEPAD_AXES_COUNT - 1) {
             nGamepad++;
         }
-        if (jsAxisMapActualIndexToWheel(mapping.axis[i])
+        if (jsAxisMapToWheel(mapping.axis[i])
                 != JS_WHEEL_AXES_COUNT - 1) {
             nWheel++;
         }
     }
     for (int i = 0; i < joystick.numButtons; i++) {
-        if (jsButtonMapActualIndexToJoystick(mapping.button[i])
+        if (jsButtonMapToJoystick(mapping.button[i])
                 != JS_JOYSTICK_BTNS_COUNT - 1) {
             nJoystick++;
         }
-        if (jsButtonMapActualIndexToGamepad(mapping.button[i])
+        if (jsButtonMapToGamepad(mapping.button[i])
                 != JS_GAMEPAD_BTNS_COUNT - 1) {
             nGamepad++;
         }
-        if (jsButtonMapActualIndexToWheel(mapping.button[i])
+        if (jsButtonMapToWheel(mapping.button[i])
                 != JS_WHEEL_BTNS_COUNT - 1) {
             nWheel++;
         }
@@ -582,10 +583,10 @@ void FrameConfig::SetupAsJoystick() {
     for (int i = 0; i < JS_JOYSTICK_BTNS_COUNT; i++) {
         buttonChoices[i] = jsJoystickBtns[i];
     }
-    jsAxisMapToFunc     = jsAxisMapActualIndexToJoystick;
-    jsAxisMapFromFunc   = jsAxisMapJoystickIndexToActual;
-    jsButtonMapToFunc   = jsButtonMapActualIndexToJoystick;
-    jsButtonMapFromFunc = jsButtonMapJoystickIndexToActual;
+    jsAxisMapToFunc     = jsAxisMapToJoystick;
+    jsAxisMapFromFunc   = jsAxisMapFromJoystick;
+    jsButtonMapToFunc   = jsButtonMapToJoystick;
+    jsButtonMapFromFunc = jsButtonMapFromJoystick;
     SetupAny(axisChoices, JS_JOYSTICK_AXES_COUNT, buttonChoices, JS_JOYSTICK_BTNS_COUNT);
 }
 
@@ -598,10 +599,10 @@ void FrameConfig::SetupAsGamepad() {
     for (int i = 0; i < JS_GAMEPAD_BTNS_COUNT; i++) {
         buttonChoices[i] = jsGamepadBtns[i];
     }
-    jsAxisMapToFunc     = jsAxisMapActualIndexToGamepad;
-    jsAxisMapFromFunc   = jsAxisMapGamepadIndexToActual;
-    jsButtonMapToFunc   = jsButtonMapActualIndexToGamepad;
-    jsButtonMapFromFunc = jsButtonMapGamepadIndexToActual;
+    jsAxisMapToFunc     = jsAxisMapToGamepad;
+    jsAxisMapFromFunc   = jsAxisMapFromGamepad;
+    jsButtonMapToFunc   = jsButtonMapToGamepad;
+    jsButtonMapFromFunc = jsButtonMapFromGamepad;
     SetupAny(axisChoices, JS_GAMEPAD_AXES_COUNT, buttonChoices, JS_GAMEPAD_BTNS_COUNT);
 }
 
@@ -614,10 +615,10 @@ void FrameConfig::SetupAsWheel() {
     for (int i = 0; i < JS_WHEEL_BTNS_COUNT; i++) {
         buttonChoices[i] = jsWheelBtns[i];
     }
-    jsAxisMapToFunc     = jsAxisMapActualIndexToWheel;
-    jsAxisMapFromFunc   = jsAxisMapWheelIndexToActual;
-    jsButtonMapToFunc   = jsButtonMapActualIndexToWheel;
-    jsButtonMapFromFunc = jsButtonMapWheelIndexToActual;
+    jsAxisMapToFunc     = jsAxisMapToWheel;
+    jsAxisMapFromFunc   = jsAxisMapFromWheel;
+    jsButtonMapToFunc   = jsButtonMapToWheel;
+    jsButtonMapFromFunc = jsButtonMapFromWheel;
     SetupAny(axisChoices, JS_WHEEL_AXES_COUNT, buttonChoices, JS_WHEEL_BTNS_COUNT);
 }
 
@@ -630,10 +631,10 @@ void FrameConfig::SetupAsAll() {
     for (int i = 0; i < JS_ALL_BTNS_COUNT; i++) {
         buttonChoices[i] = jsAllBtns[i];
     }
-    jsAxisMapToFunc     = jsAxisMapActualIndexToAll;
-    jsAxisMapFromFunc   = jsAxisMapAllIndexToActual;
-    jsButtonMapToFunc   = jsButtonMapActualIndexToAll;
-    jsButtonMapFromFunc = jsButtonMapAllIndexToActual;
+    jsAxisMapToFunc     = jsAxisMapToAll;
+    jsAxisMapFromFunc   = jsAxisMapFromAll;
+    jsButtonMapToFunc   = jsButtonMapToAll;
+    jsButtonMapFromFunc = jsButtonMapFromAll;
     SetupAny(axisChoices, JS_ALL_AXES_COUNT, buttonChoices, JS_ALL_BTNS_COUNT);
 }
 
@@ -656,7 +657,7 @@ wxString *buttonChoices, int numButtonChoices) {
     for (int i = 0; i < joystick.numAxes; i++) {
         wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
         sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
-            wxString::Format("Axis %i", i)),
+            wxString::Format("Axis %i", i+1)),
             wxSizerFlags(1).Center());
 
         wxStaticBitmap *statusImage =
@@ -678,7 +679,7 @@ wxString *buttonChoices, int numButtonChoices) {
     for (int i = 0; i < joystick.numButtons; i++) {
         wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
         sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
-            wxString::Format("Button %i", i)),
+            wxString::Format("Button %i", i+1)),
             wxSizerFlags(1).Center());
 
         wxStaticBitmap *statusImage =
@@ -700,17 +701,16 @@ wxString *buttonChoices, int numButtonChoices) {
     scrolledWindowMappings->SetScrollbars(0, heightOfChoice,
         0, wxMax((int)joystick.numAxes, (int)joystick.numButtons), 0, 0);
     sizerH1->SetSizeHints(windowMappings);
+    panel->InvalidateBestSize();
     wxSize minSize = panel->GetBestSize();
+    panel->SetClientSize(minSize);
+    SetMinClientSize(wxSize(minSize.x, minSize.y/2));
     SetClientSize(minSize);
-    minSize.y /= 2;
-    SetMinClientSize(minSize);
 }
 
 void FrameConfig::SetupClean() {
     wxWindow *windowMappings = scrolledWindowMappings->GetTargetWindow();
-    for (wxWindow* w : windowMappings->GetChildren()) {
-        w->Destroy();
-    }
+    windowMappings->DestroyChildren();
     axisStatusImages.clear();
     buttonStatusImages.clear();
 }
