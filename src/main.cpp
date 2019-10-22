@@ -11,7 +11,7 @@
 #endif
 
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 1
+#define VERSION_MINOR 2
 
 #include <wx/scrolwin.h>
 #include <wx/mstream.h>
@@ -68,9 +68,26 @@ public:
 };
 
 class ChoiceControl;
+class ChoiceType;
+
+enum jsType {
+    JS_JOYSTICK=0,
+    JS_GAMEPAD=1,
+    JS_WHEEL=2,
+    JS_ALL=3,
+    JS_TYPE_COUNT=4
+};
+
+const char *jsTypeStrings[] = {
+    "Joystick",
+    "Gamepad",
+    "Racing Wheel",
+    "Any"
+};
 
 class FrameConfig : public wxFrame {
 friend ChoiceControl;
+friend ChoiceType;
     wxDECLARE_EVENT_TABLE();
     wxPanel *panel;
     wxButton *buttonApply;
@@ -79,9 +96,23 @@ friend ChoiceControl;
     wxScrolledWindow *scrolledWindowMappings;
     wxVector<wxStaticBitmap*> axisStatusImages;
     wxVector<wxStaticBitmap*> buttonStatusImages;
+    ChoiceType *choiceType;
     wxTimer timer;
     jsDevice joystick;
     jsMapping mapping;
+    jsType joystickType = JS_ALL;
+    fpJsMapFunc jsAxisMapToFunc;
+    fpJsMapFunc jsButtonMapToFunc;
+    fpJsMapFunc jsAxisMapFromFunc;
+    fpJsMapFunc jsButtonMapFromFunc;
+
+    void SetupAsJoystick();
+    void SetupAsGamepad();
+    void SetupAsWheel();
+    void SetupAsAll();
+    void SetupClean();
+    void SetupAny(wxString *axisChoices,   int numAxisChoices,
+                  wxString *buttonChoices, int numButtonChoices);
 public:
     FrameConfig(wxFrame *parent, const jsDevice& device,
         const wxImage imageControls[9],
@@ -96,6 +127,8 @@ public:
 
     void SetChanged(bool changed);
     void GetMapping();
+    void InferTypeFromMapping();
+    void SetupInterface();
     void SetMapping();
 };
 
@@ -107,6 +140,15 @@ class ChoiceControl : public wxChoice {
 public:
     ChoiceControl(wxWindow *parent, int n, wxString *choices,
         FrameConfig *frame, bool isAxis, int controlIndex);
+
+    void OnChanged(wxCommandEvent& event);
+};
+
+class ChoiceType : public wxChoice {
+    wxDECLARE_EVENT_TABLE();
+    FrameConfig *frameConfig;
+public:
+    ChoiceType(wxWindow *parent, int n, wxString *choices, FrameConfig *frame);
 
     void OnChanged(wxCommandEvent& event);
 };
@@ -142,6 +184,10 @@ wxEND_EVENT_TABLE()
 
 wxBEGIN_EVENT_TABLE(ChoiceControl, wxChoice)
     EVT_CHOICE(wxID_ANY, ChoiceControl::OnChanged)
+wxEND_EVENT_TABLE()
+
+wxBEGIN_EVENT_TABLE(ChoiceType, wxChoice)
+    EVT_CHOICE(wxID_ANY, ChoiceType::OnChanged)
 wxEND_EVENT_TABLE()
 
 wxIMPLEMENT_APP(App);
@@ -351,6 +397,14 @@ joystick(device)
 
     wxSizer *sizerV = new wxBoxSizer(wxVERTICAL);
 
+    wxString jsTypes[JS_TYPE_COUNT];
+    for (int i = 0; i < JS_TYPE_COUNT; i++) {
+        jsTypes[i] = jsTypeStrings[i];
+    }
+    choiceType = new ChoiceType(panel, JS_TYPE_COUNT, jsTypes, this);
+
+    sizerV->Add(choiceType, wxSizerFlags().Border().Center());
+
     scrolledWindowMappings = new wxScrolledWindow(panel, wxID_ANY,
         wxDefaultPosition, wxDefaultSize, wxVSCROLL);
 
@@ -373,6 +427,8 @@ joystick(device)
     SetMinClientSize(panel->GetBestSize());
 
     GetMapping();
+    InferTypeFromMapping();
+    SetupInterface();
 
     timer.Start(20);
 }
@@ -398,6 +454,8 @@ void FrameConfig::OnClose(wxCloseEvent &event) {
 
 void FrameConfig::OnReset(wxCommandEvent &event) {
     GetMapping();
+    InferTypeFromMapping();
+    SetupInterface();
 }
 
 void FrameConfig::OnApply(wxCommandEvent &event) {
@@ -413,9 +471,9 @@ void FrameConfig::OnTimer(wxTimerEvent &event) {
             Close(true);
             return;
         }
-        if (ev.type == JS_EVENT_BUTTON) {
+        if (ev.type & JS_EVENT_BUTTON) {
             buttonStatusImages[ev.number]->SetBitmap(bitmapControls[(ev.value == 1) ? 8 : 0]);
-        } else if (ev.type == JS_EVENT_AXIS) {
+        } else if (ev.type & JS_EVENT_AXIS) {
             int image = (ev.value + 32768) / 7282;
             axisStatusImages[ev.number]->SetBitmap(bitmapControls[image]);
         }
@@ -439,80 +497,6 @@ void FrameConfig::GetMapping() {
     if (ret == JS_OK) {
         jsMappingSet(&mapping, &joystick);
     }
-    wxWindow *windowMappings = scrolledWindowMappings->GetTargetWindow();
-    for (wxWindow* w : windowMappings->GetChildren()) {
-        w->Destroy();
-    }
-    axisStatusImages.clear();
-    buttonStatusImages.clear();
-    wxSizer *sizerH1 = new wxBoxSizer(wxHORIZONTAL);
-    scrolledWindowMappings->SetSizer(sizerH1);
-
-    wxSizer *sizerAxisMaps = new wxBoxSizer(wxVERTICAL);
-    wxSizer *sizerButtonMaps = new wxBoxSizer(wxVERTICAL);
-
-    sizerH1->Add(sizerAxisMaps, wxSizerFlags().Expand().Border());
-    sizerH1->Add(sizerButtonMaps, wxSizerFlags().Expand().Border());
-
-    wxString axisChoices[25];
-    for (int i = 0; i < 24; i++) {
-        axisChoices[i] = jsMapStrings[i];
-    }
-    axisChoices[24] = jsMapStrings[JS_TOTAL_MAP_STRINGS-1];
-    wxChoice *oneChoice = nullptr;
-    for (int i = 0; i < joystick.numAxes; i++) {
-        wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
-        sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
-            wxString::Format("Axis %i", i)),
-            wxSizerFlags(1).Center());
-
-        wxStaticBitmap *statusImage =
-            new wxStaticBitmap(windowMappings, wxID_ANY, bitmapControls[4]);
-
-        sizerH2->Add(statusImage, wxSizerFlags().Center().Border());
-        axisStatusImages.push_back(statusImage);
-
-        wxChoice *choice = new ChoiceControl(windowMappings,
-            25, axisChoices, this, true, i);
-        int cur = jsMapActualIndexToString(mapping.axis[i]);
-        if (cur > 24) cur = 24;
-        choice->SetSelection(cur);
-        sizerH2->Add(choice, wxSizerFlags().Expand());
-        sizerAxisMaps->Add(sizerH2, wxSizerFlags().Expand());
-        oneChoice = choice;
-    }
-
-    wxString buttonChoices[52];
-    for (int i = 0; i < 51; i++) {
-        buttonChoices[i] = jsMapStrings[i+24];
-    }
-    buttonChoices[51] = jsMapStrings[JS_TOTAL_MAP_STRINGS-1];
-    for (int i = 0; i < joystick.numButtons; i++) {
-        wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
-        sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
-            wxString::Format("Button %i", i)),
-            wxSizerFlags(1).Center());
-
-        wxStaticBitmap *statusImage =
-            new wxStaticBitmap(windowMappings, wxID_ANY, bitmapControls[0]);
-
-        sizerH2->Add(statusImage, wxSizerFlags().Center().Border());
-        buttonStatusImages.push_back(statusImage);
-
-        wxChoice *choice = new ChoiceControl(windowMappings,
-            52, buttonChoices, this, false, i);
-        int cur = jsMapActualIndexToString(mapping.button[i])-24;
-        if (cur > 51) cur = 51;
-        choice->SetSelection(cur);
-        sizerH2->Add(choice, wxSizerFlags().Expand());
-        sizerButtonMaps->Add(sizerH2, wxSizerFlags().Expand());
-        oneChoice = choice;
-    }
-    int heightOfChoice = oneChoice != nullptr ? oneChoice->GetSize().y : 32;
-    scrolledWindowMappings->SetScrollbars(0, heightOfChoice,
-        0, wxMax((int)joystick.numAxes, (int)joystick.numButtons), 0, 0);
-    sizerH1->SetSizeHints(panel);
-    SetMinClientSize(panel->GetBestSize());
 }
 
 void FrameConfig::SetMapping() {
@@ -529,6 +513,208 @@ void FrameConfig::SetMapping() {
     SetChanged(false);
 }
 
+void FrameConfig::InferTypeFromMapping() {
+    int nJoystick = 0, nGamepad = 0, nWheel = 0;
+    for (int i = 0; i < joystick.numAxes; i++) {
+        if (jsAxisMapActualIndexToJoystick(mapping.axis[i])
+                != JS_JOYSTICK_AXES_COUNT - 1) {
+            nJoystick++;
+        }
+        if (jsAxisMapActualIndexToGamepad(mapping.axis[i])
+                != JS_GAMEPAD_AXES_COUNT - 1) {
+            nGamepad++;
+        }
+        if (jsAxisMapActualIndexToWheel(mapping.axis[i])
+                != JS_WHEEL_AXES_COUNT - 1) {
+            nWheel++;
+        }
+    }
+    for (int i = 0; i < joystick.numButtons; i++) {
+        if (jsButtonMapActualIndexToJoystick(mapping.button[i])
+                != JS_JOYSTICK_BTNS_COUNT - 1) {
+            nJoystick++;
+        }
+        if (jsButtonMapActualIndexToGamepad(mapping.button[i])
+                != JS_GAMEPAD_BTNS_COUNT - 1) {
+            nGamepad++;
+        }
+        if (jsButtonMapActualIndexToWheel(mapping.button[i])
+                != JS_WHEEL_BTNS_COUNT - 1) {
+            nWheel++;
+        }
+    }
+    if (nJoystick + nGamepad + nWheel == 0) {
+        joystickType = jsType::JS_ALL;
+    } else if (nGamepad >= nWheel + nJoystick) {
+        joystickType = jsType::JS_GAMEPAD;
+    } else if (nJoystick >= nGamepad + nWheel) {
+        joystickType = jsType::JS_JOYSTICK;
+    } else {
+        joystickType = jsType::JS_WHEEL;
+    }
+}
+
+void FrameConfig::SetupInterface() {
+    choiceType->SetSelection((int)joystickType);
+    switch (joystickType) {
+        case JS_ALL:
+            SetupAsAll();
+            break;
+        case JS_JOYSTICK:
+            SetupAsJoystick();
+            break;
+        case JS_GAMEPAD:
+            SetupAsGamepad();
+            break;
+        case JS_WHEEL:
+            SetupAsWheel();
+            break;
+        case JS_TYPE_COUNT: break;
+    }
+}
+
+void FrameConfig::SetupAsJoystick() {
+    wxString axisChoices[JS_JOYSTICK_AXES_COUNT];
+    for (int i = 0; i < JS_JOYSTICK_AXES_COUNT; i++) {
+        axisChoices[i] = jsJoystickAxes[i];
+    }
+    wxString buttonChoices[JS_JOYSTICK_BTNS_COUNT];
+    for (int i = 0; i < JS_JOYSTICK_BTNS_COUNT; i++) {
+        buttonChoices[i] = jsJoystickBtns[i];
+    }
+    jsAxisMapToFunc     = jsAxisMapActualIndexToJoystick;
+    jsAxisMapFromFunc   = jsAxisMapJoystickIndexToActual;
+    jsButtonMapToFunc   = jsButtonMapActualIndexToJoystick;
+    jsButtonMapFromFunc = jsButtonMapJoystickIndexToActual;
+    SetupAny(axisChoices, JS_JOYSTICK_AXES_COUNT, buttonChoices, JS_JOYSTICK_BTNS_COUNT);
+}
+
+void FrameConfig::SetupAsGamepad() {
+    wxString axisChoices[JS_GAMEPAD_AXES_COUNT];
+    for (int i = 0; i < JS_GAMEPAD_AXES_COUNT; i++) {
+        axisChoices[i] = jsGamepadAxes[i];
+    }
+    wxString buttonChoices[JS_GAMEPAD_BTNS_COUNT];
+    for (int i = 0; i < JS_GAMEPAD_BTNS_COUNT; i++) {
+        buttonChoices[i] = jsGamepadBtns[i];
+    }
+    jsAxisMapToFunc     = jsAxisMapActualIndexToGamepad;
+    jsAxisMapFromFunc   = jsAxisMapGamepadIndexToActual;
+    jsButtonMapToFunc   = jsButtonMapActualIndexToGamepad;
+    jsButtonMapFromFunc = jsButtonMapGamepadIndexToActual;
+    SetupAny(axisChoices, JS_GAMEPAD_AXES_COUNT, buttonChoices, JS_GAMEPAD_BTNS_COUNT);
+}
+
+void FrameConfig::SetupAsWheel() {
+    wxString axisChoices[JS_WHEEL_AXES_COUNT];
+    for (int i = 0; i < JS_WHEEL_AXES_COUNT; i++) {
+        axisChoices[i] = jsWheelAxes[i];
+    }
+    wxString buttonChoices[JS_WHEEL_BTNS_COUNT];
+    for (int i = 0; i < JS_WHEEL_BTNS_COUNT; i++) {
+        buttonChoices[i] = jsWheelBtns[i];
+    }
+    jsAxisMapToFunc     = jsAxisMapActualIndexToWheel;
+    jsAxisMapFromFunc   = jsAxisMapWheelIndexToActual;
+    jsButtonMapToFunc   = jsButtonMapActualIndexToWheel;
+    jsButtonMapFromFunc = jsButtonMapWheelIndexToActual;
+    SetupAny(axisChoices, JS_WHEEL_AXES_COUNT, buttonChoices, JS_WHEEL_BTNS_COUNT);
+}
+
+void FrameConfig::SetupAsAll() {
+    wxString axisChoices[JS_ALL_AXES_COUNT];
+    for (int i = 0; i < JS_ALL_AXES_COUNT; i++) {
+        axisChoices[i] = jsAllAxes[i];
+    }
+    wxString buttonChoices[JS_ALL_BTNS_COUNT];
+    for (int i = 0; i < JS_ALL_BTNS_COUNT; i++) {
+        buttonChoices[i] = jsAllBtns[i];
+    }
+    jsAxisMapToFunc     = jsAxisMapActualIndexToAll;
+    jsAxisMapFromFunc   = jsAxisMapAllIndexToActual;
+    jsButtonMapToFunc   = jsButtonMapActualIndexToAll;
+    jsButtonMapFromFunc = jsButtonMapAllIndexToActual;
+    SetupAny(axisChoices, JS_ALL_AXES_COUNT, buttonChoices, JS_ALL_BTNS_COUNT);
+}
+
+void FrameConfig::SetupAny(wxString *axisChoices, int numAxisChoices,
+wxString *buttonChoices, int numButtonChoices) {
+    SetupClean();
+
+    wxWindow *windowMappings = scrolledWindowMappings->GetTargetWindow();
+
+    wxSizer *sizerH1 = new wxBoxSizer(wxHORIZONTAL);
+    scrolledWindowMappings->SetSizer(sizerH1);
+
+    wxSizer *sizerAxisMaps = new wxBoxSizer(wxVERTICAL);
+    wxSizer *sizerButtonMaps = new wxBoxSizer(wxVERTICAL);
+
+    sizerH1->Add(sizerAxisMaps, wxSizerFlags().Expand().Border());
+    sizerH1->Add(sizerButtonMaps, wxSizerFlags().Expand().Border());
+
+    wxChoice *oneChoice = nullptr;
+    for (int i = 0; i < joystick.numAxes; i++) {
+        wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
+        sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
+            wxString::Format("Axis %i", i)),
+            wxSizerFlags(1).Center());
+
+        wxStaticBitmap *statusImage =
+            new wxStaticBitmap(windowMappings, wxID_ANY, bitmapControls[4]);
+
+        sizerH2->Add(statusImage, wxSizerFlags().Center().Border());
+        axisStatusImages.push_back(statusImage);
+
+        wxChoice *choice = new ChoiceControl(windowMappings,
+            numAxisChoices, axisChoices, this, true, i);
+        int cur = jsAxisMapToFunc(mapping.axis[i]);
+        if (cur > numAxisChoices-1) cur = numAxisChoices-1;
+        choice->SetSelection(cur);
+        sizerH2->Add(choice, wxSizerFlags().Expand());
+        sizerAxisMaps->Add(sizerH2, wxSizerFlags().Expand());
+        oneChoice = choice;
+    }
+
+    for (int i = 0; i < joystick.numButtons; i++) {
+        wxSizer *sizerH2 = new wxBoxSizer(wxHORIZONTAL);
+        sizerH2->Add(new wxStaticText(windowMappings, wxID_ANY,
+            wxString::Format("Button %i", i)),
+            wxSizerFlags(1).Center());
+
+        wxStaticBitmap *statusImage =
+            new wxStaticBitmap(windowMappings, wxID_ANY, bitmapControls[0]);
+
+        sizerH2->Add(statusImage, wxSizerFlags().Center().Border());
+        buttonStatusImages.push_back(statusImage);
+
+        wxChoice *choice = new ChoiceControl(windowMappings,
+            numButtonChoices, buttonChoices, this, false, i);
+        int cur = jsButtonMapToFunc(mapping.button[i]);
+        if (cur > numButtonChoices-1) cur = numButtonChoices-1;
+        choice->SetSelection(cur);
+        sizerH2->Add(choice, wxSizerFlags().Expand());
+        sizerButtonMaps->Add(sizerH2, wxSizerFlags().Expand());
+        oneChoice = choice;
+    }
+    int heightOfChoice = choiceType->GetSize().y;
+    scrolledWindowMappings->SetScrollbars(0, heightOfChoice,
+        0, wxMax((int)joystick.numAxes, (int)joystick.numButtons), 0, 0);
+    sizerH1->SetSizeHints(windowMappings);
+    wxSize minSize = panel->GetBestSize();
+    SetClientSize(minSize);
+    minSize.y /= 2;
+    SetMinClientSize(minSize);
+}
+
+void FrameConfig::SetupClean() {
+    wxWindow *windowMappings = scrolledWindowMappings->GetTargetWindow();
+    for (wxWindow* w : windowMappings->GetChildren()) {
+        w->Destroy();
+    }
+    axisStatusImages.clear();
+    buttonStatusImages.clear();
+}
+
 ChoiceControl::ChoiceControl(wxWindow *parent, int n, wxString *choices,
     FrameConfig *frame, bool isAxis, int controlIndex) :
 wxChoice(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, n, choices),
@@ -538,14 +724,29 @@ frameConfig(frame), axis(isAxis), index(controlIndex) {
 
 void ChoiceControl::OnChanged(wxCommandEvent &event) {
     frameConfig->SetChanged(true);
-    int newVal = jsMapStringIndexToActual(event.GetInt() + (axis ? 0 : 24));
-    if (newVal == JS_INVALID_ARGUMENT) {
-        wxLogError("Invalid choice!");
+    int newVal;
+    if (axis) {
+        newVal = frameConfig->jsAxisMapFromFunc(event.GetInt());
     } else {
-        if (axis) {
-            frameConfig->mapping.axis[index] = newVal;
-        } else {
-            frameConfig->mapping.button[index] = newVal;
-        }
+        newVal = frameConfig->jsButtonMapFromFunc(event.GetInt());
     }
+    if (newVal == JS_INVALID_ARGUMENT) {
+        newVal = axis ? ABS_MAX : KEY_MAX;
+    }
+    if (axis) {
+        frameConfig->mapping.axis[index] = newVal;
+    } else {
+        frameConfig->mapping.button[index] = newVal;
+    }
+}
+
+ChoiceType::ChoiceType(wxWindow *parent, int n, wxString *choices, FrameConfig *frame) :
+wxChoice(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, n, choices),
+frameConfig(frame) {
+
+}
+
+void ChoiceType::OnChanged(wxCommandEvent &event) {
+    frameConfig->joystickType = (jsType)event.GetInt();
+    frameConfig->SetupInterface();
 }
