@@ -43,7 +43,7 @@ int jsButtonMapToJoystick(int i);
 int jsButtonMapFromJoystick(int i);
 
 #define JS_GAMEPAD_AXES_COUNT 9
-#define JS_GAMEPAD_BTNS_COUNT 16
+#define JS_GAMEPAD_BTNS_COUNT 20
 extern const char* jsGamepadAxes[JS_GAMEPAD_AXES_COUNT];
 extern const char* jsGamepadBtns[JS_GAMEPAD_BTNS_COUNT];
 
@@ -54,7 +54,7 @@ int jsButtonMapFromGamepad(int i);
 
 // NOTE: Someone will have to verify these as well.
 #define JS_WHEEL_AXES_COUNT 6
-#define JS_WHEEL_BTNS_COUNT 16
+#define JS_WHEEL_BTNS_COUNT 20
 extern const char* jsWheelAxes[JS_WHEEL_AXES_COUNT];
 extern const char* jsWheelBtns[JS_WHEEL_BTNS_COUNT];
 

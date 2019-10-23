@@ -147,7 +147,7 @@ int jsButtonMapFromAll(int i) {
     }
 }
 
-const char *jsJoystickAxes[7] = {
+const char *jsJoystickAxes[] = {
     "X-Axis (Roll)",
     "Y-Axis (Pitch)",
     "Z-Axis (Yaw)",
@@ -188,7 +188,7 @@ int jsAxisMapFromJoystick(int i) {
     }
 }
 
-const char *jsJoystickBtns[14] = {
+const char *jsJoystickBtns[] = {
     "Trigger",
     "Thumb 1",
     "Thumb 2",
@@ -230,7 +230,7 @@ int jsButtonMapFromJoystick(int i) {
     }
 }
 
-const char *jsGamepadAxes[9] = {
+const char *jsGamepadAxes[] = {
     "Left Stick X",
     "Left Stick Y",
     "Left Trigger",
@@ -269,7 +269,7 @@ int jsAxisMapFromGamepad(int i) {
     }
 }
 
-const char *jsGamepadBtns[16] = {
+const char *jsGamepadBtns[] = {
     "South (A or Cross)",
     "East (B or Circle)",
     "C (Old-Fashioned)",
@@ -285,6 +285,10 @@ const char *jsGamepadBtns[16] = {
     "Mode (Central Button)",
     "Left Thumbstick Press",
     "Right Thumbstick Press",
+    "D-Pad Up",
+    "D-Pad Down",
+    "D-Pad Left",
+    "D-Pad Right",
     "Disabled"
 };
 
@@ -294,6 +298,10 @@ int jsButtonMapToGamepad(int i) {
         return disabled;
     } else if (i <= BTN_THUMBR) {
         return i-BTN_SOUTH;
+    } else if (i < BTN_DPAD_UP) {
+        return disabled;
+    } else if (i <= BTN_DPAD_RIGHT) {
+        return i-BTN_DPAD_UP+15;
     } else {
         return disabled;
     }
@@ -304,12 +312,14 @@ int jsButtonMapFromGamepad(int i) {
         return -1;
     } else if (i < 15) {
         return i+BTN_SOUTH;
+    } else if (i < 20) {
+        return i+BTN_DPAD_UP-15;
     } else {
         return -1;
     }
 }
 
-const char *jsWheelAxes[6] = {
+const char *jsWheelAxes[] = {
     "Wheel",
     "Gas Pedal",
     "Brake Pedal",
@@ -345,7 +355,7 @@ int jsAxisMapFromWheel(int i) {
     }
 }
 
-const char *jsWheelBtns[16] = {
+const char *jsWheelBtns[] = {
     "South (A or Cross)",
     "East (B or Circle)",
     "North (Y or Triangle)",
@@ -361,6 +371,10 @@ const char *jsWheelBtns[16] = {
     "R3", // Maybe these are supposed to be C and Z?
     "Gear Down",
     "Gear Up",
+    "D-Pad Up",
+    "D-Pad Down",
+    "D-Pad Left",
+    "D-Pad Right",
     "Disabled"
 };
 
@@ -382,6 +396,10 @@ int jsButtonMapToWheel(int i) {
         return disabled;
     } else if (i <= BTN_GEAR_UP) {
         return i-BTN_GEAR_DOWN+13;
+    } else if (i < BTN_DPAD_UP) {
+        return disabled;
+    } else if (i <= BTN_DPAD_RIGHT) {
+        return i-BTN_DPAD_UP+15;
     } else {
         return disabled;
     }
@@ -398,6 +416,8 @@ int jsButtonMapFromWheel(int i) {
         return i+BTN_TL-4;
     } else if (i < 15) {
         return i+BTN_GEAR_DOWN-13;
+    } else if (i < 20) {
+        return i+BTN_DPAD_UP-15;
     } else {
         return -1;
     }
